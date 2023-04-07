@@ -1,6 +1,10 @@
 #include <iostream>
 #include <atlstr.h>
-// #include <psapi.h>
+//#include <psapi.h>
+
+#include <winver.h>
+#pragma comment(lib,"Version.lib")
+
 
 // #include <shlwapi.h>
 // #pragma comment(lib, "shlwapi.lib") // link with shlwapi.lib
@@ -33,6 +37,60 @@ namespace MixerCtrl {
             if (pData->title[0] != '\0') return FALSE;
         }
         return TRUE;
+    }
+
+
+    std::string getFileDescription(const wchar_t* filePath)
+    {
+        int versionInfoSize = GetFileVersionInfoSize(filePath, NULL);
+        if (!versionInfoSize) {
+            std::cerr << "Error: GetFileVersionInfoSize failed with error " << GetLastError() << std::endl;
+            return "";
+        }
+
+        auto versionInfo = new BYTE[versionInfoSize];
+        std::unique_ptr<BYTE[]> versionInfo_automatic_cleanup(versionInfo);
+        if (!GetFileVersionInfo(filePath, NULL, versionInfoSize, versionInfo)) {
+            std::cerr << "Error: GetFileVersionInfo failed with error " << GetLastError() << std::endl;
+            delete[] versionInfo;
+            return "";
+        }
+
+        struct LANGANDCODEPAGE {
+            WORD wLanguage;
+            WORD wCodePage;
+        } *translationArray;
+
+        UINT translationArrayByteLength = 0;
+        if (!VerQueryValue(versionInfo, L"\\VarFileInfo\\Translation", (LPVOID*)&translationArray, &translationArrayByteLength)) {
+            std::cerr << "Error: VerQueryValue failed with error " << GetLastError() << std::endl;
+            delete[] versionInfo;
+            return "";
+        }
+
+        for (unsigned int i = 0; i < (translationArrayByteLength / sizeof(LANGANDCODEPAGE)); i++) {
+            wchar_t fileDescriptionKey[256];
+            wsprintf(
+                fileDescriptionKey,
+                L"\\StringFileInfo\\%04x%04x\\FileDescription",
+                translationArray[i].wLanguage,
+                translationArray[i].wCodePage
+            );
+
+            wchar_t* fileDescription = NULL;
+            UINT fileDescriptionSize;
+            if (VerQueryValue(versionInfo, fileDescriptionKey, (LPVOID*)&fileDescription, &fileDescriptionSize)) {
+                //std::wcout << std::endl << fileDescription << std::endl;
+
+                int len = WideCharToMultiByte(CP_UTF8, 0, fileDescription, -1, NULL, 0, NULL, NULL);
+                char* _description = new char[len];
+                WideCharToMultiByte(CP_UTF8, 0, fileDescription, -1, _description, len, NULL, NULL);
+
+                return _description;
+            }
+        }
+
+        return "";
     }
 
     void InitAudioDevice() {
@@ -155,10 +213,14 @@ namespace MixerCtrl {
 
                     if (data.title[0] == '\0') {
                         DWORD buffSize = 1024;
-                        CHAR buffer[1024];
+                        char buffer[1024];
                         if (QueryFullProcessImageNameA(handle, 0, buffer, &buffSize))
                         {
-                            mainWindowTitle = buffer;
+                            wchar_t buffer_wchar[1024];
+                            mbstowcs_s(NULL, buffer_wchar, buffer, 1024);
+                            //mbstowcs(buffer_wchar, buffer, 1024);
+                            std::string fileDescription = getFileDescription(buffer_wchar);
+                            mainWindowTitle = fileDescription;
                         }
                         CloseHandle(handle);
                     }
