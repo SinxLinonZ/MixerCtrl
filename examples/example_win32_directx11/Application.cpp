@@ -18,6 +18,11 @@
 
 namespace MixerCtrl {
 
+    void Tick() {
+        update_sessions();
+        render_ui();
+    }
+
     // Callback function for EnumWindows
     BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
     {
@@ -80,8 +85,6 @@ namespace MixerCtrl {
             wchar_t* fileDescription = NULL;
             UINT fileDescriptionSize;
             if (VerQueryValue(versionInfo, fileDescriptionKey, (LPVOID*)&fileDescription, &fileDescriptionSize)) {
-                //std::wcout << std::endl << fileDescription << std::endl;
-
                 int len = WideCharToMultiByte(CP_UTF8, 0, fileDescription, -1, NULL, 0, NULL, NULL);
                 char* _description = new char[len];
                 WideCharToMultiByte(CP_UTF8, 0, fileDescription, -1, _description, len, NULL, NULL);
@@ -93,7 +96,7 @@ namespace MixerCtrl {
         return "";
     }
 
-    void InitAudioDevice() {
+    void init_audio_device() {
 
         // Get enumerator for audio endpoint devices.
         hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
@@ -102,15 +105,19 @@ namespace MixerCtrl {
             (void**)&pEnumerator);
         EXIT_ON_ERROR(hr);
 
-        // Get peak meter for default audio-rendering device.
-        hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pDevice);
+        hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pRenderDevice);
+        EXIT_ON_ERROR(hr);
+        hr = pEnumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &pCaptureDevice);
         EXIT_ON_ERROR(hr);
 
-        hr = pDevice->Activate(__uuidof(IAudioMeterInformation),
-            CLSCTX_ALL, NULL, (void**)&pMeterInfo);
+        hr = pRenderDevice->Activate(__uuidof(IAudioMeterInformation),
+            CLSCTX_ALL, NULL, (void**)&pRenderDeviceMeterInfo);
+        EXIT_ON_ERROR(hr);
+        hr = pCaptureDevice->Activate(__uuidof(IAudioMeterInformation),
+            CLSCTX_ALL, NULL, (void**)&pCaptureDeviceMeterInfo);
         EXIT_ON_ERROR(hr);
 
-        hr = pDevice->Activate(__uuidof(IAudioSessionManager2),
+        hr = pRenderDevice->Activate(__uuidof(IAudioSessionManager2),
             CLSCTX_ALL, NULL, (void**)&pSessionManager);
         EXIT_ON_ERROR(hr);
 
@@ -122,13 +129,26 @@ namespace MixerCtrl {
             //MessageBox(NULL, TEXT("This program requires Windows Vista."),
                 //TEXT("Error termination"), MB_OK);
         }
-        SAFE_RELEASE(pEnumerator);
-        SAFE_RELEASE(pDevice);
-        SAFE_RELEASE(pMeterInfo);
+        release_devices();
         return;
     }
 
-    void UpdateSession() {
+    void register_endpoint_notification() {
+        //hr = pEnumerator->RegisterEndpointNotificationCallback(this);
+        //EXIT_ON_ERROR(hr);
+
+    }
+
+    void release_devices() {
+        SAFE_RELEASE(pEnumerator);
+        SAFE_RELEASE(pRenderDevice);
+        SAFE_RELEASE(pCaptureDevice);
+        SAFE_RELEASE(pRenderDeviceMeterInfo);
+        SAFE_RELEASE(pCaptureDeviceMeterInfo);
+    }
+
+
+    void update_sessions() {
 
         std::vector<DWORD> eraseList;
 
@@ -180,31 +200,6 @@ namespace MixerCtrl {
                 mainWindowTitle = "System";
             }
             else {
-
-                //HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processId);
-
-                //if (hProcess)
-                //{
-                //    WCHAR wszImagePath[MAX_PATH];
-                //    DWORD dwSize = sizeof(wszImagePath);
-                //    if (GetProcessImageFileNameW(hProcess, wszImagePath, dwSize))
-                //    {
-                //        // WCHAR wszProgramName[MAX_PATH];
-                //        auto wszProgramName = PathFindFileNameW(wszImagePath);
-                //        std::wcout << L"Program name: " << wszProgramName << std::endl;
-                //        mainWindowTitle = CW2A(wszProgramName);
-                //    }
-                //    else
-                //    {
-                //        std::cerr << "Error: GetProcessImageFileNameW failed" << std::endl;
-                //    }
-                //    CloseHandle(hProcess);
-                //}
-                //else
-                //{
-                //    std::cerr << "Error: OpenProcess failed" << std::endl;
-                //}
-
                 HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
                 if (handle)
                 {
@@ -218,9 +213,7 @@ namespace MixerCtrl {
                         {
                             wchar_t buffer_wchar[1024];
                             mbstowcs_s(NULL, buffer_wchar, buffer, 1024);
-                            //mbstowcs(buffer_wchar, buffer, 1024);
-                            std::string fileDescription = getFileDescription(buffer_wchar);
-                            mainWindowTitle = fileDescription;
+                            mainWindowTitle = getFileDescription(buffer_wchar);
                         }
                         CloseHandle(handle);
                     }
@@ -258,57 +251,20 @@ namespace MixerCtrl {
             //MessageBox(NULL, TEXT("This program requires Windows Vista."),
                 //TEXT("Error termination"), MB_OK);
         }
-        SAFE_RELEASE(pEnumerator);
-        SAFE_RELEASE(pDevice);
-        SAFE_RELEASE(pMeterInfo);
+        release_devices();
         return;
     }
 
-    void RenderUI() {
+    void render_ui() {
         ImGui::ShowDemoWindow(nullptr);
 
-        hr = pMeterInfo->GetPeakValue(&masterPeak);
+        hr = pRenderDeviceMeterInfo->GetPeakValue(&renderMasterPeak);
 
         ImGui::Begin("Meter");
-        //char buf[32];
-        //sprintf(buf, "%d/%d", (int)(peak * 100), 100);
-        //ImGui::ProgressBar(peak, ImVec2(0.f, 0.f), buf);
-        ImGui::ProgressBar(masterPeak, ImVec2(0.f, 0.f), "");
+        
+        ImGui::ProgressBar(renderMasterPeak, ImVec2(0.f, 0.f), "");
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::Text("Master");
-
-        //ImDrawList* draw_list = ImGui::GetWindowDrawList();
-        //ImVec2 gradient_size = ImVec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight());
-        {
-
-            /*
-            ImVec2 p0 = ImGui::GetCursorScreenPos();
-            ImVec2 p1 = ImVec2(p0.x + 5.0f, p0.y + 100.0f);
-            draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(IM_COL32(100, 100, 100, 255)));
-            ImGui::InvisibleButton("##gradient1", ImVec2(5.0f, 100.0f));
-
-            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-
-            p0 = ImGui::GetCursorScreenPos();
-            p1 = ImVec2(p0.x + 5.0f, p0.y + 100.0f);
-            draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(IM_COL32(100, 100, 100, 255)));
-            ImGui::InvisibleButton("##gradient1", ImVec2(5.0f, 100.0f));
-            */
-
-            //ImU32 col_a = ImGui::GetColorU32(IM_COL32(0, 0, 0, 255));
-            //ImU32 col_b = ImGui::GetColorU32(IM_COL32(255, 255, 255, 255));
-
-            //draw_list->AddRectFilledMultiColor(p0, p1, col_a, col_b, col_b, col_a);
-            //ImGui::InvisibleButton("##gradient1", gradient_size);
-
-        }
-
-
-        //for (const auto& session : sessionMap) {
-        //    ImGui::ProgressBar(session.second->PeakValue, ImVec2(0.0f, 0.0f));
-        //    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        //    ImGui::Text(session.second->DisplayName.c_str());
-        //}
 
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         int sessionCount = sessionMap.size();
@@ -335,10 +291,6 @@ namespace MixerCtrl {
                 p0.x = start.x;
                 p1.x = start.x + 5.0f;
 
-                //p0.y = start.y;
-                //p1.y = start.y + METER_HEIGHT;
-                //draw_list->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 255));
-
                 p0.y = start.y;
                 p1.y = start.y + METER_HEIGHT / 6;
                 draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(IM_COL32(255, 0, 0, 255)));
@@ -348,10 +300,6 @@ namespace MixerCtrl {
                 p0.y = p1.y;
                 p1.y = start.y + METER_HEIGHT;
                 draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(IM_COL32(0, 255, 0, 255)));
-
-                //p0.y = start.y + METER_HEIGHT - session->PeakValue * METER_HEIGHT;
-                //p1.y = start.y + METER_HEIGHT;
-                //draw_list->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 255));
 
                 p0.y = start.y;
                 p1.y = start.y + METER_HEIGHT - session->PeakValue * METER_HEIGHT;

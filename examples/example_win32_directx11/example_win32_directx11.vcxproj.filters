@@ -26,6 +26,7 @@
     </ClInclude>
     <ClInclude Include="Application.h" />
     <ClInclude Include="AudioSessionInfo.h" />
+    <ClInclude Include="EndpointNotificationClient.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\imgui.cpp">
@@ -53,6 +54,7 @@
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="Application.cpp" />
+    <ClCompile Include="EndpointNotificationClient.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.txt" />

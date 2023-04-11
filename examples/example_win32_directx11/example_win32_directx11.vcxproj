@@ -151,6 +151,7 @@
     <ClInclude Include="..\..\backends\imgui_impl_win32.h" />
     <ClInclude Include="Application.h" />
     <ClInclude Include="AudioSessionInfo.h" />
+    <ClInclude Include="EndpointNotificationClient.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\imgui.cpp" />
@@ -161,6 +162,7 @@
     <ClCompile Include="..\..\backends\imgui_impl_dx11.cpp" />
     <ClCompile Include="..\..\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="Application.cpp" />
+    <ClCompile Include="EndpointNotificationClient.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>

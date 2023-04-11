@@ -18,6 +18,16 @@
 
 namespace MixerCtrl {
 
+    static HRESULT hr;
+    static IMMDeviceEnumerator* pEnumerator = NULL;
+
+    void init_audio_device();
+    void register_endpoint_notification();
+
+    void release_devices();
+
+
+
     // Struct to hold the data we need to pass to EnumWindowsProc
     struct EnumWindowsData
     {
@@ -27,17 +37,20 @@ namespace MixerCtrl {
 
     static std::map<DWORD, AudioSessionInfo*> sessionMap;
 
-    static HRESULT hr;
-    static IMMDeviceEnumerator* pEnumerator = NULL;
-    static IMMDevice* pDevice = NULL;
+    static IMMDevice* pRenderDevice = NULL;
+    static IMMDevice* pCaptureDevice = NULL;
+
     static IAudioSessionManager2* pSessionManager = NULL;
     static IAudioSessionEnumerator* pSessionEnumerator = NULL;
 
-    static IAudioMeterInformation* pMeterInfo = NULL;
-    static float masterPeak = 0.0f;
+    static IAudioMeterInformation* pRenderDeviceMeterInfo = NULL;
+    static IAudioMeterInformation* pCaptureDeviceMeterInfo = NULL;
+    static float renderMasterPeak = 0.0f;
 
-    void RenderUI();
+    void render_ui();
 
-    void InitAudioDevice();
-    void UpdateSession();
+    
+    void update_sessions();
+
+    void Tick();
 }
