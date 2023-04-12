@@ -43,9 +43,9 @@ namespace MixerCtrl {
         }
         return TRUE;
     }
+    
 
-
-    std::string getFileDescription(const wchar_t* filePath)
+    std::string get_file_description(const wchar_t* filePath)
     {
         int versionInfoSize = GetFileVersionInfoSize(filePath, NULL);
         if (!versionInfoSize) {
@@ -213,7 +213,7 @@ namespace MixerCtrl {
                         {
                             wchar_t buffer_wchar[1024];
                             mbstowcs_s(NULL, buffer_wchar, buffer, 1024);
-                            mainWindowTitle = getFileDescription(buffer_wchar);
+                            mainWindowTitle = get_file_description(buffer_wchar);
                         }
                         CloseHandle(handle);
                     }
