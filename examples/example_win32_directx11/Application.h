@@ -10,7 +10,7 @@
 #include "AudioSessionInfo.h"
 
 #define EXIT_ON_ERROR(hr)  \
-              if (FAILED(hr)) { goto Exit; }
+              if (FAILED(hr)) { release_devices(); return; }
 #define SAFE_RELEASE(punk)  \
               if ((punk) != NULL)  \
                 { (punk)->Release(); (punk) = NULL; }
@@ -18,10 +18,36 @@
 
 namespace MixerCtrl {
 
-    static HRESULT hr;
-    static IMMDeviceEnumerator* pEnumerator = NULL;
+    void Tick();
+    inline HRESULT hr;
+
+
+    inline std::string renderDeviceName;
+    inline std::string captureDeviceName;
 
     void init_audio_device();
+    inline IMMDeviceEnumerator* pEnumerator = nullptr;
+    inline IMMDevice* pRenderDevice = nullptr;
+    inline IMMDevice* pCaptureDevice = nullptr;
+    inline IAudioEndpointVolume* pRenderDeviceVolume = nullptr;
+    inline IAudioEndpointVolume* pCaptureDeviceVolume = nullptr;
+    inline IAudioMeterInformation* pRenderDeviceMeterInfo = nullptr;
+    inline IAudioMeterInformation* pCaptureDeviceMeterInfo = nullptr;
+    inline IAudioSessionManager2* pSessionManager = nullptr;
+    inline float renderMasterPeak = 0.0f;
+    inline float captureMasterPeak = 0.0f;
+
+
+    void remove_exited_session();
+    void update_session_list();
+    inline IAudioSessionEnumerator* pSessionEnumerator = nullptr;
+
+
+
+
+
+
+
     void register_endpoint_notification();
 
     void release_devices();
@@ -35,22 +61,13 @@ namespace MixerCtrl {
         std::string title;
     };
 
-    static std::map<DWORD, AudioSessionInfo*> sessionMap;
+    inline std::map<DWORD, AudioSessionInfo*> sessionMap;
 
-    static IMMDevice* pRenderDevice = NULL;
-    static IMMDevice* pCaptureDevice = NULL;
 
-    static IAudioSessionManager2* pSessionManager = NULL;
-    static IAudioSessionEnumerator* pSessionEnumerator = NULL;
-
-    static IAudioMeterInformation* pRenderDeviceMeterInfo = NULL;
-    static IAudioMeterInformation* pCaptureDeviceMeterInfo = NULL;
-    static float renderMasterPeak = 0.0f;
+    
 
     void render_ui();
 
-    
-    void update_sessions();
+    void update_session_info();
 
-    void Tick();
 }

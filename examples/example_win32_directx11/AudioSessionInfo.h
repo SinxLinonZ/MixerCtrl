@@ -4,14 +4,17 @@
 
 namespace MixerCtrl {
 
-    class AudioSessionInfo {
+    struct AudioSessionInfo {
     public:
+        AudioSessionInfo() = delete;
+
+        AudioSessionInfo(DWORD processId, std::string displayName, float peakValue, float volume)
+            : ProcessId(processId), DisplayName(displayName), OriginPeakValue(peakValue), Volume(volume) {}
+
         DWORD ProcessId;
         std::string DisplayName;
-        float PeakValue;
-
-        AudioSessionInfo(DWORD processId, std::string displayName, float peakValue)
-            : ProcessId(processId), DisplayName(displayName), PeakValue(peakValue){}
+        float OriginPeakValue;
+        float Volume;
     };
 
 }

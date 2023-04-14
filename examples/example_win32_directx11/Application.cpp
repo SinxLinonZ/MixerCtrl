@@ -1,10 +1,11 @@
 #include <iostream>
 #include <atlstr.h>
 //#include <psapi.h>
+#include <propkeydef.h>
+#include <Functiondiscoverykeys_devpkey.h>
 
 #include <winver.h>
 #pragma comment(lib,"Version.lib")
-
 
 // #include <shlwapi.h>
 // #pragma comment(lib, "shlwapi.lib") // link with shlwapi.lib
@@ -17,11 +18,6 @@
 
 
 namespace MixerCtrl {
-
-    void Tick() {
-        update_sessions();
-        render_ui();
-    }
 
     // Callback function for EnumWindows
     BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
@@ -43,7 +39,6 @@ namespace MixerCtrl {
         }
         return TRUE;
     }
-    
 
     std::string get_file_description(const wchar_t* filePath)
     {
@@ -96,8 +91,33 @@ namespace MixerCtrl {
         return "";
     }
 
-    void init_audio_device() {
+    void release_devices() {
+        SAFE_RELEASE(pEnumerator);
+        SAFE_RELEASE(pRenderDevice);
+        SAFE_RELEASE(pCaptureDevice);
+        SAFE_RELEASE(pRenderDeviceMeterInfo);
+        SAFE_RELEASE(pCaptureDeviceMeterInfo);
+        SAFE_RELEASE(pRenderDeviceVolume);
+        SAFE_RELEASE(pCaptureDeviceVolume);
 
+        SAFE_RELEASE(pSessionManager);
+    }
+
+
+
+
+
+    void register_endpoint_notification() {
+        //hr = pEnumerator->RegisterEndpointNotificationCallback(this);
+        //EXIT_ON_ERROR(hr);
+
+    }
+
+
+
+
+
+    void init_audio_device() {
         // Get enumerator for audio endpoint devices.
         hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
             NULL, CLSCTX_INPROC_SERVER,
@@ -110,6 +130,7 @@ namespace MixerCtrl {
         hr = pEnumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &pCaptureDevice);
         EXIT_ON_ERROR(hr);
 
+        // Meter information
         hr = pRenderDevice->Activate(__uuidof(IAudioMeterInformation),
             CLSCTX_ALL, NULL, (void**)&pRenderDeviceMeterInfo);
         EXIT_ON_ERROR(hr);
@@ -117,54 +138,73 @@ namespace MixerCtrl {
             CLSCTX_ALL, NULL, (void**)&pCaptureDeviceMeterInfo);
         EXIT_ON_ERROR(hr);
 
+        // Volume control
+        hr = pRenderDevice->Activate(__uuidof(IAudioEndpointVolume),
+            CLSCTX_ALL, NULL, (void**)&pRenderDeviceVolume);
+        EXIT_ON_ERROR(hr);
+        hr = pCaptureDevice->Activate(__uuidof(IAudioEndpointVolume),
+            CLSCTX_ALL, NULL, (void**)&pCaptureDeviceVolume);
+        EXIT_ON_ERROR(hr);
+
+        // Session control
         hr = pRenderDevice->Activate(__uuidof(IAudioSessionManager2),
             CLSCTX_ALL, NULL, (void**)&pSessionManager);
         EXIT_ON_ERROR(hr);
 
-        return;
+        // Get device name
+        wchar_t* renderDeviceId;
+        wchar_t* captureDeviceId;
+        hr = pRenderDevice->GetId(&renderDeviceId);
+        EXIT_ON_ERROR(hr);
+        hr = pCaptureDevice->GetId(&captureDeviceId);
+        EXIT_ON_ERROR(hr);
 
-    Exit:
-        if (FAILED(hr))
-        {
-            //MessageBox(NULL, TEXT("This program requires Windows Vista."),
-                //TEXT("Error termination"), MB_OK);
-        }
-        release_devices();
-        return;
+        IPropertyStore* pRenderProps = NULL;
+        IPropertyStore* pCaptureProps = NULL;
+        hr = pRenderDevice->OpenPropertyStore(STGM_READ, &pRenderProps);
+        EXIT_ON_ERROR(hr);
+        hr = pCaptureDevice->OpenPropertyStore(STGM_READ, &pCaptureProps);
+        EXIT_ON_ERROR(hr);
+
+        PROPVARIANT varName;
+        PropVariantInit(&varName);
+        hr = pRenderProps->GetValue(PKEY_Device_FriendlyName, &varName);
+        EXIT_ON_ERROR(hr);
+        renderDeviceName = CW2A(varName.pwszVal);
+        PropVariantClear(&varName);
+
+        hr = pCaptureProps->GetValue(PKEY_Device_FriendlyName, &varName);
+        EXIT_ON_ERROR(hr);
+        captureDeviceName = CW2A(varName.pwszVal);
+        PropVariantClear(&varName);
+
+        SAFE_RELEASE(pRenderProps);
+        SAFE_RELEASE(pCaptureProps);
+
+        // Get device icon
+        // TODO
     }
 
-    void register_endpoint_notification() {
-        //hr = pEnumerator->RegisterEndpointNotificationCallback(this);
-        //EXIT_ON_ERROR(hr);
-
-    }
-
-    void release_devices() {
-        SAFE_RELEASE(pEnumerator);
-        SAFE_RELEASE(pRenderDevice);
-        SAFE_RELEASE(pCaptureDevice);
-        SAFE_RELEASE(pRenderDeviceMeterInfo);
-        SAFE_RELEASE(pCaptureDeviceMeterInfo);
-    }
-
-
-    void update_sessions() {
-
-        std::vector<DWORD> eraseList;
+    void Tick() {
 
         hr = pSessionManager->GetSessionEnumerator(&pSessionEnumerator);
         EXIT_ON_ERROR(hr);
+        remove_exited_session();
+        update_session_info();
+        SAFE_RELEASE(pSessionEnumerator);
 
-        int sessionCount;
-        hr = pSessionEnumerator->GetCount(&sessionCount);
-        EXIT_ON_ERROR(hr);
+        render_ui();
+    }
 
-        // Remove exited session
+    void remove_exited_session() {
+        std::vector<DWORD> eraseList;
+
         for (auto& audioSession : sessionMap) {
             if (audioSession.first == 0) continue;
             HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, audioSession.first);
             DWORD lpExitCode;
             GetExitCodeProcess(handle, &lpExitCode);
+
             if (lpExitCode != STILL_ACTIVE) {
                 delete audioSession.second;
                 eraseList.push_back(audioSession.first);
@@ -173,13 +213,19 @@ namespace MixerCtrl {
         for (auto& processId : eraseList) {
             sessionMap.erase(processId);
         }
+    }
 
+    void update_session_info() {
+        int sessionCount;
+        hr = pSessionEnumerator->GetCount(&sessionCount);
+        EXIT_ON_ERROR(hr);
 
         for (int i = 0; i < sessionCount; i++) {
-            IAudioSessionControl* session;
+            IAudioSessionControl* session = nullptr;
 
-            IAudioSessionControl2* session2;
-            IAudioMeterInformation* audioMeterInformation;
+            IAudioSessionControl2* session2 = nullptr;
+            IAudioMeterInformation* audioMeterInformation = nullptr;
+            ISimpleAudioVolume* simpleAudioVolume = nullptr;
 
             hr = pSessionEnumerator->GetSession(i, &session);
             EXIT_ON_ERROR(hr);
@@ -188,16 +234,17 @@ namespace MixerCtrl {
             EXIT_ON_ERROR(hr);
             hr = session->QueryInterface(__uuidof(IAudioMeterInformation), (void**)&audioMeterInformation);
             EXIT_ON_ERROR(hr);
+            hr = session->QueryInterface(__uuidof(ISimpleAudioVolume), (void**)&simpleAudioVolume);
+            EXIT_ON_ERROR(hr);
 
 
             DWORD processId;
             hr = session2->GetProcessId(&processId);
             EXIT_ON_ERROR(hr);
-            //if (processId == 0) continue;
 
             std::string mainWindowTitle;
             if (processId == 0) {
-                mainWindowTitle = "System";
+                mainWindowTitle = "System Sounds";
             }
             else {
                 HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
@@ -206,7 +253,10 @@ namespace MixerCtrl {
                     EnumWindowsData data = { processId, "" };
                     EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&data));
 
-                    if (data.title[0] == '\0') {
+                    if (data.title[0] != '\0') {
+                        mainWindowTitle = data.title;
+                    }
+                    else {
                         DWORD buffSize = 1024;
                         char buffer[1024];
                         if (QueryFullProcessImageNameA(handle, 0, buffer, &buffSize))
@@ -217,10 +267,6 @@ namespace MixerCtrl {
                         }
                         CloseHandle(handle);
                     }
-                    else {
-                        mainWindowTitle = data.title;
-                    }
-
                 }
             }
 
@@ -228,31 +274,24 @@ namespace MixerCtrl {
             hr = audioMeterInformation->GetPeakValue(&_peak);
             EXIT_ON_ERROR(hr);
 
+            float _volume;
+            hr = simpleAudioVolume->GetMasterVolume(&_volume);
+            EXIT_ON_ERROR(hr);
+
+            // Insert to session list if not is new session
             if (sessionMap[processId] == nullptr) {
-                sessionMap[processId] = new AudioSessionInfo{
-                        processId, mainWindowTitle, 0.0f
-                };
+                sessionMap[processId] = new AudioSessionInfo(processId, mainWindowTitle, 0.0f, 0.0f);
             }
 
             sessionMap[processId]->DisplayName = mainWindowTitle;
-            sessionMap[processId]->PeakValue = _peak;
+            sessionMap[processId]->OriginPeakValue = _peak;
+            sessionMap[processId]->Volume = _volume;
 
             SAFE_RELEASE(audioMeterInformation);
+            SAFE_RELEASE(simpleAudioVolume);
             SAFE_RELEASE(session2);
             SAFE_RELEASE(session);
         }
-
-        SAFE_RELEASE(pSessionEnumerator);
-        return;
-
-    Exit:
-        if (FAILED(hr))
-        {
-            //MessageBox(NULL, TEXT("This program requires Windows Vista."),
-                //TEXT("Error termination"), MB_OK);
-        }
-        release_devices();
-        return;
     }
 
     void render_ui() {
@@ -260,8 +299,8 @@ namespace MixerCtrl {
 
         hr = pRenderDeviceMeterInfo->GetPeakValue(&renderMasterPeak);
 
+
         ImGui::Begin("Meter");
-        
         ImGui::ProgressBar(renderMasterPeak, ImVec2(0.f, 0.f), "");
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::Text("Master");
@@ -302,7 +341,7 @@ namespace MixerCtrl {
                 draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(IM_COL32(0, 255, 0, 255)));
 
                 p0.y = start.y;
-                p1.y = start.y + METER_HEIGHT - session->PeakValue * METER_HEIGHT;
+                p1.y = start.y + METER_HEIGHT - session->OriginPeakValue * METER_HEIGHT;
                 draw_list->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 255));
 
                 //p1.x = start.x + 1.0f;
@@ -329,7 +368,7 @@ namespace MixerCtrl {
                 ImGui::TableSetColumnIndex(column);
                 const AudioSessionInfo* session = sessionIter->second;
 
-                ImGui::TextWrapped(std::to_string(session->PeakValue * 100).c_str());
+                ImGui::TextWrapped(std::to_string(session->OriginPeakValue * 100).c_str());
                 ++sessionIter;
             }
 
