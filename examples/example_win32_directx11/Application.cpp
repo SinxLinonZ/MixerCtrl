@@ -317,7 +317,7 @@ namespace MixerCtrl {
 
 
 
-        
+
 
 
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -329,7 +329,7 @@ namespace MixerCtrl {
         {
             const AudioSessionInfo* session = sessionIter->second;
 
-            if (ImGui::TreeNode(session->DisplayName.c_str()))
+            if (ImGui::TreeNode((void*)(intptr_t)session->ProcessId, session->DisplayName.c_str()))
             {
                 // Meter bar
                 ImVec2 start = ImGui::GetCursorScreenPos();
