@@ -193,6 +193,12 @@ namespace MixerCtrl {
         update_session_info();
         SAFE_RELEASE(pSessionEnumerator);
 
+        // Update master volume
+        hr = pRenderDeviceMeterInfo->GetPeakValue(&renderMasterPeak);
+        EXIT_ON_ERROR(hr);
+        hr = pCaptureDeviceMeterInfo->GetPeakValue(&captureMasterPeak);
+        EXIT_ON_ERROR(hr);
+
         render_ui();
     }
 
@@ -297,34 +303,35 @@ namespace MixerCtrl {
     void render_ui() {
         ImGui::ShowDemoWindow(nullptr);
 
-        hr = pRenderDeviceMeterInfo->GetPeakValue(&renderMasterPeak);
-
-
         ImGui::Begin("Meter");
+
+
+        ImGui::Text("Playback: ");
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::Text(renderDeviceName.c_str());
+
         ImGui::ProgressBar(renderMasterPeak, ImVec2(0.f, 0.f), "");
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::Text("Master");
+        ImGui::Text("Master peak");
+        ImGui::SliderFloat("##Capture volume", &f1, 0.0f, 1.0f, "Volume: %.3f");
+
+
+
+        
+
 
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         int sessionCount = sessionMap.size();
         auto sessionIter = sessionMap.begin();
         float METER_HEIGHT = 120.0f;
-        if (ImGui::BeginTable("table1", sessionCount,
-            ImGuiTableFlags_SizingFixedSame | ImGuiTableFlags_NoHostExtendX
-            //| ImGuiTableFlags_Resizable
-            //| ImGuiTableFlags_NoSavedSettings
-        ))
+
+        for (int column = 0; column < sessionCount; column++)
         {
-            for (int column = 0; column < sessionCount; column++) {
-                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-            }
+            const AudioSessionInfo* session = sessionIter->second;
 
-            ImGui::TableNextRow();
-            for (int column = 0; column < sessionCount; column++)
+            if (ImGui::TreeNode(session->DisplayName.c_str()))
             {
-                ImGui::TableSetColumnIndex(column);
-                const AudioSessionInfo* session = sessionIter->second;
-
+                // Meter bar
                 ImVec2 start = ImGui::GetCursorScreenPos();
                 ImVec2 p0, p1;
                 p0.x = start.x;
@@ -355,38 +362,24 @@ namespace MixerCtrl {
                 p1.y = start.y + METER_HEIGHT;
                 draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(IM_COL32(0, 127, 0, 128)));
 
-
                 ImGui::InvisibleButton("##gradient1", ImVec2(5.0f, METER_HEIGHT));
+                // End of meter bar
 
-                ++sessionIter;
+                ImGui::TreePop();
             }
 
-            ImGui::TableNextRow();
-            sessionIter = sessionMap.begin();
-            for (int column = 0; column < sessionCount; column++)
-            {
-                ImGui::TableSetColumnIndex(column);
-                const AudioSessionInfo* session = sessionIter->second;
-
-                ImGui::TextWrapped(std::to_string(session->OriginPeakValue * 100).c_str());
-                ++sessionIter;
-            }
-
-
-            ImGui::TableNextRow();
-            sessionIter = sessionMap.begin();
-            for (int column = 0; column < sessionCount; column++)
-            {
-                ImGui::TableSetColumnIndex(column);
-                const AudioSessionInfo* session = sessionIter->second;
-
-                ImGui::TextWrapped(session->DisplayName.c_str());
-                ++sessionIter;
-            }
-
-            ImGui::EndTable();
+            ++sessionIter;
         }
 
+        ImGui::NewLine();
+        ImGui::Text("Capture: ");
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::Text(captureDeviceName.c_str());
+
+        ImGui::ProgressBar(captureMasterPeak, ImVec2(0.f, 0.f), "");
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::Text("Master peak");
+        ImGui::SliderFloat("##Capture volume", &f1, 0.0f, 1.0f, "Volume: %.3f");
 
         ImGui::End();
     }

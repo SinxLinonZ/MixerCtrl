@@ -20,6 +20,7 @@ namespace MixerCtrl {
 
     void Tick();
     inline HRESULT hr;
+    inline std::map<DWORD, AudioSessionInfo*> sessionMap;
 
 
     inline std::string renderDeviceName;
@@ -42,17 +43,13 @@ namespace MixerCtrl {
     void update_session_list();
     inline IAudioSessionEnumerator* pSessionEnumerator = nullptr;
 
-
-
-
+    void update_session_info();
+    void render_ui();
 
 
 
     void register_endpoint_notification();
-
     void release_devices();
-
-
 
     // Struct to hold the data we need to pass to EnumWindowsProc
     struct EnumWindowsData
@@ -61,13 +58,14 @@ namespace MixerCtrl {
         std::string title;
     };
 
-    inline std::map<DWORD, AudioSessionInfo*> sessionMap;
 
 
     
 
-    void render_ui();
 
-    void update_session_info();
+
+
+
+    inline float f1 = .0f;
 
 }
